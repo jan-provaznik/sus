@@ -170,27 +170,22 @@ func LimitAstralDeviceFreq (target AstralDevice) (uint32, error) {
 	return limit, nil
 }
 
-func LimitAstralDeviceLoad (target AstralDevice) (float64, error) {
+func LimitAstralDeviceLoad (target AstralDevice, limitValue float64) (float64, error) {
 	var watts float64
 
 	// nvmlDeviceGetPowerManagementLimitConstraints
-	// nvmlDeviceGetPowerManagementLimit
 	// nvmlDeviceSetPowerManagementLimit
-	// ... both deal in mW
+	// ... deal in mW
 
 	limitLower, limitUpper, ret := nvml.DeviceGetPowerManagementLimitConstraints(target.deviceHandle)
 	if ret != nvml.SUCCESS {
 		return watts, fmt.Errorf("nvmlDeviceGetPowerManagementLimitConstraints failed")
 	}
-
-	limitCurrent, ret := nvml.DeviceGetPowerManagementLimit(target.deviceHandle)
-	if ret != nvml.SUCCESS {
-		return watts, fmt.Errorf("nvmlDeviceGetPowerManagementLimit failed")
-	}
 	
 	// ... power limit can be only set within the (lower, upper) range
-	limit := clamp(limitCurrent - 5000, limitLower, limitUpper)
+	limit := clamp(uint32(limitValue), limitLower, limitUpper)
 
+	// ... 
 	ret = nvml.DeviceSetPowerManagementLimit(target.deviceHandle, limit)
 	if ret != nvml.SUCCESS {
 		return watts, fmt.Errorf("nvmlDeviceSetPowerManagementLimit failed")

@@ -10,27 +10,26 @@ import "time"
 import "github.com/jan-provaznik/sus"
 import "github.com/NVIDIA/go-nvml/pkg/nvml"
 
-var upperDrawLimit float64 = 150
-var lowerDrawLimit float64 =  10
-var matchDrawLimit float64 =   1
+var upperDrawLimit float64 = 9.2
+var lowerDrawLimit float64 = 0.0
+var matchDrawLimit float64 = 1.0
 
 func main () {
 	defer nvml.Shutdown()
 
-	interval := flag.Duration("t", time.Second, "Monitoring interval")
+	interval := flag.Duration("t", 2 * time.Second, "Monitoring interval")
 
-	flag.Float64Var(& upperDrawLimit, "u", 105.0, "Maximal power draw per wire (W).")
-	flag.Float64Var(& matchDrawLimit, "m",  0.75, "Maximal mismatch ratio.")
+	flag.Float64Var(& upperDrawLimit, "u", 8.5, 
+		"Maximal power draw per wire (A). Going above 9.2 A is dangerous.")
 	flag.Parse()
 
-	if upperDrawLimit > 150 || upperDrawLimit < 1 {
-		fmt.Println("Invalid upperDrawLimit. Restrict to 1 <= value < 150.")
+	if upperDrawLimit > 15 || upperDrawLimit < 0 {
+		fmt.Println("Invalid upperDrawLimit. Restrict to 1 <= value < 15.")
 		os.Exit(1)
 	}
 
-	if matchDrawLimit > 1 || matchDrawLimit < 0 {
-		fmt.Println("Invalid matchDrawLimit. Restrict to 0 <= value < 1.")
-		os.Exit(1)
+	if upperDrawLimit > 9.2 {
+		fmt.Println("Warning! Setting the maximal power draw above the 9.2 A is strongly discouraged.")
 	}
 
 	ret := nvml.Init()
@@ -75,59 +74,33 @@ func deviceMonitor (index int, device sus.AstralDevice) error {
 		return err
 	}
 
-	// ... calculate statistics
-	totalDraw := 0.0
-	upperDraw := 0.0
-	lowerDraw := 1e6
-
+	maximum := 0.0
 	for _, pin := range pins {
-		value := pin.Drawing()
-		if value > upperDraw {
-			upperDraw = value
+		if value := pin.Current(); value > maximum {
+			maximum = value
 		}
-		if value < lowerDraw {
-			lowerDraw = value
-		}
-		totalDraw = totalDraw + value
 	}
 
-	// ... calculate draw match
-	matchDraw := lowerDraw / upperDraw
-
-	// ... emergency actions (pin overload)
-	if upperDraw > upperDrawLimit {
-		fmt.Printf("Device (%d) identified by (%s)\n",
-			index, device.Identifier())
-		fmt.Printf("... detected overload %.1f (limit %.1f)\n",
-			upperDraw, upperDrawLimit)
-
-		limit, err := sus.LimitAstralDeviceLoad(device)
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("... limiting power draw to %.1f W\n", 
-			limit)
-	}
-
-	// ... emergency actions (pin mismatch min-max draw)
-	if lowerDraw > lowerDrawLimit {
-		if matchDraw < matchDrawLimit {
-			fmt.Printf("Device (%d) identified by (%s)\n",
-				index, device.Identifier())
-			fmt.Printf("... detected mismatch %.2f (limit %.2f)\n",
-				matchDraw, matchDrawLimit)
-
-			limit, err := sus.LimitAstralDeviceFreq(device)
-			if err != nil {
-				return err
-			}
-
-			fmt.Printf("... attempting to limit device frequency to %d MHz\n", 
-				limit)
-		}
+	if maximum> upperDrawLimit {
+		deviceLimit(index, device, maximum)
 	}
 
 	return nil
+}
+
+func deviceLimit (index int, device sus.AstralDevice, current float64) {
+	fmt.Printf("Device (%d) identified by (%s)\n",
+		index, device.Identifier())
+	fmt.Printf("... detected overload %.1f A (limit %.1f A)\n",
+		current, upperDrawLimit)
+
+	rate := current / upperDrawLimit
+	target := 600 * rate
+
+	if target < 400 {
+		sus.LimitAstralDeviceLoad(device, target)
+	} else {
+		sus.LimitAstralDeviceFreq(device)
+	}
 }
 
