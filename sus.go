@@ -114,6 +114,7 @@ func ReadAstralDevicePins (target AstralDevice) ([]AstralDevicePin, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer bus.Close()
 
 	err = bus.SetSlaveAddr(0x2B, false)
 	if err != nil {
