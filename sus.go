@@ -3,57 +3,61 @@
 
 package sus
 
-import "os"
-import "fmt"
-import "cmp"
-import "slices"
-import "strings"
-import "encoding/binary"
+import (
+	"cmp"
+	"encoding/binary"
+	"fmt"
+	"os"
+	"slices"
+	"strings"
 
-import "github.com/NVIDIA/go-nvml/pkg/nvml"
-import "github.com/khirono/go-i2c/smbus"
+	"github.com/NVIDIA/go-nvml/pkg/nvml"
+	"github.com/khirono/go-i2c/smbus"
+)
 
 // Constants
 //
 
-var nvidiaCompatibleDevice = []uint32 { 0x2b8510de }
-var astralCompatibleDevice = []uint32 { 0x89e31043 }
+var nvidiaCompatibleDevice = []uint32{0x2b8510de}
+
+// Astral Black,White Series and Matrix
+var astralCompatibleDevice = []uint32{0x89e31043, 0x8a2e1043, 0x8a611043}
 
 // Exported types and methods
 //
 
 type AstralDevice struct {
-	sensorNumber int
-	deviceHandle nvml.Device
-	deviceDetailPci nvml.PciInfo 
+	sensorNumber           int
+	deviceHandle           nvml.Device
+	deviceDetailPci        nvml.PciInfo
 	deviceDetailIdentifier string
 }
 
-func (self AstralDevice) Identifier () string {
+func (self AstralDevice) Identifier() string {
 	return self.deviceDetailIdentifier
 }
 
 type AstralDevicePin struct {
 	voltage float64
-	current float64 
+	current float64
 }
 
-func (self AstralDevicePin) Voltage () float64 {
+func (self AstralDevicePin) Voltage() float64 {
 	return self.voltage
 }
 
-func (self AstralDevicePin) Current () float64 {
+func (self AstralDevicePin) Current() float64 {
 	return self.current
 }
 
-func (self AstralDevicePin) Drawing () float64 {
+func (self AstralDevicePin) Drawing() float64 {
 	return self.voltage * self.current
 }
 
 // Exported functions
 //
 
-func FindAstralDevices () ([]AstralDevice, error) {
+func FindAstralDevices() ([]AstralDevice, error) {
 	var found []AstralDevice
 
 	count, ret := nvml.DeviceGetCount()
@@ -72,10 +76,10 @@ func FindAstralDevices () ([]AstralDevice, error) {
 			return nil, fmt.Errorf("nvmlDeviceGetPciInfo failed")
 		}
 
-		if ! slices.Contains(nvidiaCompatibleDevice, info.PciDeviceId) {
+		if !slices.Contains(nvidiaCompatibleDevice, info.PciDeviceId) {
 			continue
 		}
-		if ! slices.Contains(astralCompatibleDevice, info.PciSubSystemId) {
+		if !slices.Contains(astralCompatibleDevice, info.PciSubSystemId) {
 			continue
 		}
 
@@ -89,10 +93,10 @@ func FindAstralDevices () ([]AstralDevice, error) {
 			return nil, err
 		}
 
-		current := AstralDevice {
-			sensorNumber: number,
-			deviceHandle: device,
-			deviceDetailPci: info,
+		current := AstralDevice{
+			sensorNumber:           number,
+			deviceHandle:           device,
+			deviceDetailPci:        info,
 			deviceDetailIdentifier: uuid,
 		}
 
@@ -102,7 +106,7 @@ func FindAstralDevices () ([]AstralDevice, error) {
 	return found, nil
 }
 
-func ReadAstralDevicePins (target AstralDevice) ([]AstralDevicePin, error) {
+func ReadAstralDevicePins(target AstralDevice) ([]AstralDevicePin, error) {
 	// Sensor address and register
 	// ... via https://long-cat.net/gitea/moosecrap/evga-icx
 	// ... via https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
@@ -134,13 +138,13 @@ func ReadAstralDevicePins (target AstralDevice) ([]AstralDevicePin, error) {
 	result := make([]AstralDevicePin, 6)
 	for index := range 6 {
 		start := 4 * index
-		result[index] = readBuffer(buffer[start:start + 4])
+		result[index] = readBuffer(buffer[start : start+4])
 	}
 
 	return result, nil
 }
 
-func ReadAstralDeviceLoad (target AstralDevice) (float64, error) {
+func ReadAstralDeviceLoad(target AstralDevice) (float64, error) {
 	// nvmlDeviceGetPowerUsage f
 	// ... deals in mW
 
@@ -154,14 +158,14 @@ func ReadAstralDeviceLoad (target AstralDevice) (float64, error) {
 // Emergency actions
 //
 
-func LimitAstralDeviceFreq (target AstralDevice) (uint32, error) {
+func LimitAstralDeviceFreq(target AstralDevice) (uint32, error) {
 	current, ret := nvml.DeviceGetClockInfo(target.deviceHandle, nvml.CLOCK_GRAPHICS)
 	if ret != nvml.SUCCESS {
 		return 0, fmt.Errorf("nvmlDeviceGetClockInfo failed")
 	}
 
-	value :=  int32(current)
-	limit := uint32(clamp(value - 500, 100, value))
+	value := int32(current)
+	limit := uint32(clamp(value-500, 100, value))
 
 	ret = nvml.DeviceSetGpuLockedClocks(target.deviceHandle, 0, limit)
 	if ret != nvml.SUCCESS {
@@ -171,7 +175,7 @@ func LimitAstralDeviceFreq (target AstralDevice) (uint32, error) {
 	return limit, nil
 }
 
-func LimitAstralDeviceLoad (target AstralDevice) (float64, error) {
+func LimitAstralDeviceLoad(target AstralDevice) (float64, error) {
 	var watts float64
 
 	// nvmlDeviceGetPowerManagementLimitConstraints
@@ -188,9 +192,9 @@ func LimitAstralDeviceLoad (target AstralDevice) (float64, error) {
 	if ret != nvml.SUCCESS {
 		return watts, fmt.Errorf("nvmlDeviceGetPowerManagementLimit failed")
 	}
-	
+
 	// ... power limit can be only set within the (lower, upper) range
-	limit := clamp(limitCurrent - 5000, limitLower, limitUpper)
+	limit := clamp(limitCurrent-5000, limitLower, limitUpper)
 
 	ret = nvml.DeviceSetPowerManagementLimit(target.deviceHandle, limit)
 	if ret != nvml.SUCCESS {
@@ -204,17 +208,17 @@ func LimitAstralDeviceLoad (target AstralDevice) (float64, error) {
 // Supporting functions
 //
 
-func readBuffer (buffer []byte) AstralDevicePin {
+func readBuffer(buffer []byte) AstralDevicePin {
 	wordOne := binary.BigEndian.Uint16(buffer[0:2])
 	wordTwo := binary.BigEndian.Uint16(buffer[2:4])
 
-	return AstralDevicePin {
-		voltage: float64(wordOne) / 1000, 
+	return AstralDevicePin{
+		voltage: float64(wordOne) / 1000,
 		current: float64(wordTwo) / 1000,
 	}
 }
 
-func findAstralDeviceSensorNumber (info nvml.PciInfo) (int, error) {
+func findAstralDeviceSensorNumber(info nvml.PciInfo) (int, error) {
 	root := fmt.Sprintf("/sys/bus/pci/devices/%04x:%02x:%02x.0",
 		info.Domain, info.Bus, info.Device)
 
@@ -227,11 +231,11 @@ func findAstralDeviceSensorNumber (info nvml.PciInfo) (int, error) {
 	}
 
 	for _, item := range entries {
-		if ! strings.HasPrefix(item.Name(), "i2c-") {
+		if !strings.HasPrefix(item.Name(), "i2c-") {
 			continue
 		}
 
-		num, err := fmt.Sscanf(item.Name(), "i2c-%d", & value)
+		num, err := fmt.Sscanf(item.Name(), "i2c-%d", &value)
 		if err != nil {
 			return 0xffff, err
 		}
@@ -250,7 +254,7 @@ func findAstralDeviceSensorNumber (info nvml.PciInfo) (int, error) {
 	return final, nil
 }
 
-func clamp[V cmp.Ordered] (value V, lower V, upper V) V {
+func clamp[V cmp.Ordered](value V, lower V, upper V) V {
 	if value > upper {
 		return upper
 	}
@@ -259,4 +263,3 @@ func clamp[V cmp.Ordered] (value V, lower V, upper V) V {
 	}
 	return value
 }
-
