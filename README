@@ -28,9 +28,9 @@ Considerations
     meet the power limits.
   • Outside of this range the power can be further limited by adjusting the
     clocks manually, making it possible to further reduce the power draw down
-    to roughly 60 W.
+    to approximately 60 W.
 
-  When reducing the power there are two strategies. 
+  When reducing the power there are two strategies possible.
 
   • If the target power limit lies within the (400, 600) range, use the power
     management facilities directly.
@@ -39,8 +39,8 @@ Considerations
   Control algorithm
 
   • Compute rate := max(current) / threshold
-  • Compute goal := 600 * rate
-  • If (400 < goal) {
+  • Compute goal := powerLimitUpper * rate
+  • If (powerLimitLower < goal) {
     ... use nvml to limit the power,
     else
     ... take current clock frequency and reduce it by a step.

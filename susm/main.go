@@ -11,26 +11,29 @@ import "github.com/jan-provaznik/sus"
 import "github.com/NVIDIA/go-nvml/pkg/nvml"
 
 func main () {
-	defer nvml.Shutdown()
+	os.Exit(work())
+}
 
+func work () int {
 	interval := flag.Duration("t", time.Second, "Monitoring interval")
 	flag.Parse()
 
 	ret := nvml.Init()
 	if ret != nvml.SUCCESS {
 		fmt.Println("nvmlInit failed")
-		os.Exit(1)
+		return 1
 	}
+	defer nvml.Shutdown()
 
 	list, err := sus.FindAstralDevices()
 	if err != nil {
 		fmt.Println(err)
-		os.Exit(1)
+		return 1
 	}
 
 	if len(list) < 1 {
-		fmt.Println("Could not find any compatible devices. Exiting.")
-		os.Exit(0)
+		fmt.Println("Could not find any compatible devices. Exiting gracefully.")
+		return 0
 	}
 
 	for {
@@ -38,7 +41,7 @@ func main () {
 			err := deviceReport(index, device)
 			if err != nil {
 				fmt.Println(err)
-				os.Exit(1)
+				return 2
 			}
 		}
 		fmt.Println()

@@ -10,60 +10,66 @@ import "time"
 import "github.com/jan-provaznik/sus"
 import "github.com/NVIDIA/go-nvml/pkg/nvml"
 
-var upperDrawLimit float64 = 9.2
-var lowerDrawLimit float64 = 0.0
-var matchDrawLimit float64 = 1.0
+var flagMonitorDelay time.Duration = 2 * time.Second
+var flagCurrentLimit float64       = 8.5
 
 func main () {
-	defer nvml.Shutdown()
+	os.Exit(work())
+}
 
-	interval := flag.Duration("t", 2 * time.Second, "Monitoring interval")
-
-	flag.Float64Var(& upperDrawLimit, "u", 8.5, 
-		"Maximal power draw per wire (A). Going above 9.2 A is dangerous.")
+func work () int {
+	flag.DurationVar(& flagMonitorDelay, "t", 2 * time.Second, 
+		"Monitoring interval")
+	flag.Float64Var(& flagCurrentLimit, "u", 8.5, 
+		"Maximal current draw per wire (in amperes)")
 	flag.Parse()
 
-	if upperDrawLimit > 15 || upperDrawLimit < 0 {
-		fmt.Println("Invalid upperDrawLimit. Restrict to 1 <= value < 15.")
-		os.Exit(1)
+	if flagCurrentLimit < 0 {
+		fmt.Println("Invalid currentLimit: must be > 0")
+		return 1
+	}
+	if flagCurrentLimit > 10 {
+		fmt.Println("Invalid currentLimit: must be < 10")
+		return 1
 	}
 
-	if upperDrawLimit > 9.2 {
-		fmt.Println("Warning! Setting the maximal power draw above the 9.2 A is strongly discouraged.")
+	if flagMonitorDelay > 5 * time.Second {
+		fmt.Println("Warning! Setting the monitoring interval too large is discouraged")
+	}
+	if flagCurrentLimit > 9.2 {
+		fmt.Println("Warning! Setting the current limit above 9.2 (in amperes) is strongly discouraged")
 	}
 
-	ret := nvml.Init()
-	if ret != nvml.SUCCESS {
+	if ret := nvml.Init(); ret != nvml.SUCCESS {
 		fmt.Println("nvmlInit failed")
-		os.Exit(1)
+		return 2
 	}
+	defer nvml.Shutdown()
 
 	list, err := sus.FindAstralDevices()
 	if err != nil {
 		fmt.Println(err)
-		os.Exit(1)
+		return 2
 	}
 
 	if len(list) < 1 {
-		fmt.Println("Could not find any compatible devices. Exiting.")
-		os.Exit(0)
+		fmt.Println("Could not find any compatible devices. Exiting gracefully.")
+		return 0
 	}
 
 	for index, device := range list {
 		fmt.Printf("Detected device (%d) identified by (%s)\n",
 			index, device.Identifier())
 	}
-	fmt.Println()
 
 	for {
 		for index, device := range list {
-			err := deviceMonitor(index, device)
-			if err != nil {
+			if err := deviceMonitor(index, device); err != nil {
 				fmt.Println(err)
-				os.Exit(1)
+				return 3
 			}
 		}
-		time.Sleep(* interval)
+		time.Sleep(flagMonitorDelay)
 	}
 }
 
@@ -81,26 +87,21 @@ func deviceMonitor (index int, device sus.AstralDevice) error {
 		}
 	}
 
-	if maximum> upperDrawLimit {
-		deviceLimit(index, device, maximum)
+	if maximum < flagCurrentLimit {
+		return nil
 	}
 
-	return nil
-}
-
-func deviceLimit (index int, device sus.AstralDevice, current float64) {
 	fmt.Printf("Device (%d) identified by (%s)\n",
 		index, device.Identifier())
 	fmt.Printf("... detected overload %.1f A (limit %.1f A)\n",
-		current, upperDrawLimit)
+		maximum, flagCurrentLimit)
 
-	rate := current / upperDrawLimit
-	target := 600 * rate
 
-	if target < 400 {
-		sus.LimitAstralDeviceLoad(device, target)
-	} else {
-		sus.LimitAstralDeviceFreq(device)
+	rate := flagCurrentLimit / maximum
+	if rate > 1 {
+		return nil
 	}
+
+	return sus.LimitAstralDevice(device, rate)
 }
 
