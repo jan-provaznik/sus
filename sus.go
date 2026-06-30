@@ -5,7 +5,6 @@ package sus
 
 import "os"
 import "fmt"
-import "cmp"
 import "slices"
 import "strings"
 import "encoding/binary"
@@ -18,6 +17,24 @@ import "github.com/khirono/go-i2c/smbus"
 
 var nvidiaCompatibleDevice = []uint32 { 0x2b8510de }
 var astralCompatibleDevice = []uint32 { 0x89e31043 }
+
+// Exported type: AstralDevicePin
+//
+
+type AstralDevicePin struct {
+	voltage float64
+	current float64 
+}
+
+func (self AstralDevicePin) Voltage () float64 {
+	return self.voltage
+}
+func (self AstralDevicePin) Current () float64 {
+	return self.current
+}
+func (self AstralDevicePin) Drawing () float64 {
+	return self.voltage * self.current
+}
 
 // Exported type: AstralDevice
 //
@@ -39,24 +56,71 @@ func (self AstralDevice) Identifier () string {
 	return self.deviceDetailIdentifier
 }
 
-// Exported type: AstralDevicePin
-//
-
-type AstralDevicePin struct {
-	voltage float64
-	current float64 
+func (self AstralDevice) ReadDeviceLoad () (uint32, error) {
+	// nvmlDeviceGetPowerUsage (mW)
+	value, ret := nvml.DeviceGetPowerUsage(self.deviceHandle)
+	if ret != nvml.SUCCESS {
+		return 0, fmt.Errorf("nvmlDeviceGetPowerUsage failed")
+	}
+	return value, nil
 }
 
-func (self AstralDevicePin) Voltage () float64 {
-	return self.voltage
+func (self AstralDevice) LimitDevice (factor float64) (error) {
+	if factor > 1 {
+		return fmt.Errorf("Invalid factor: must be factor < 1")
+	}
+	if factor < 0 {
+		return fmt.Errorf("Invalid factor: must be 0 < factor")
+	}
+
+	load, err := self.ReadDeviceLoad()
+	if err != nil {
+		return err
+	}
+
+	target := uint32(float64(load) * factor)
+	if target < self.devicePowerConstraintLower {
+		return limitAstralDeviceClock(self)
+	}
+
+	return limitAstralDeviceLoad(self, target)
 }
 
-func (self AstralDevicePin) Current () float64 {
-	return self.current
-}
+func (self AstralDevice) ReadDevicePins () ([]AstralDevicePin, error) {
+	// Sensor address and register
+	// ... via https://long-cat.net/gitea/moosecrap/evga-icx
+	// ... via https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
+	// Sensor interaction (smbus)
+	// ... via https://github.com/Timic3/astral-power-monitoring
 
-func (self AstralDevicePin) Drawing () float64 {
-	return self.voltage * self.current
+	bus, err := smbus.Open(self.sensorNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer bus.Close()
+
+	if err := bus.SetSlaveAddr(0x2B, false); err != nil {
+		return nil, err
+	}
+
+	buffer := make([]byte, 24)
+	length, err := bus.ReadI2CBlockData(0x80, buffer)
+	if err != nil {
+		return nil, err
+	}
+
+	if length != 24 {
+		return nil, fmt.Errorf("could not read sensor device")
+	}
+
+	result := make([]AstralDevicePin, 6)
+	for index := range 6 {
+		start := 4 * index
+		value := parseRegisterBuffer(buffer[start:start + 4])
+		result[index] = value
+	}
+
+	return result, nil
 }
 
 // Exported functions
@@ -100,54 +164,19 @@ func FindAstralDevices () ([] AstralDevice, error) {
 }
 
 func ReadAstralDevicePins (target AstralDevice) ([]AstralDevicePin, error) {
-	// Sensor address and register
-	// ... via https://long-cat.net/gitea/moosecrap/evga-icx
-	// ... via https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
-	// Sensor interaction (smbus)
-	// ... via https://github.com/Timic3/astral-power-monitoring
-
-	bus, err := smbus.Open(target.sensorNumber)
-	if err != nil {
-		return nil, err
-	}
-	defer bus.Close()
-
-	if err := bus.SetSlaveAddr(0x2B, false); err != nil {
-		return nil, err
-	}
-
-	buffer := make([]byte, 24)
-	length, err := bus.ReadI2CBlockData(0x80, buffer)
-	if err != nil {
-		return nil, err
-	}
-
-	if length != 24 {
-		return nil, fmt.Errorf("could not read sensor device")
-	}
-
-	result := make([]AstralDevicePin, 6)
-	for index := range 6 {
-		start := 4 * index
-		result[index] = parseRegisterBuffer(buffer[start:start + 4])
-	}
-
-	return result, nil
+	return target.ReadDevicePins()
 }
-
 func ReadAstralDeviceLoad (target AstralDevice) (uint32, error) {
-	// nvmlDeviceGetPowerUsage (mW)
-	value, ret := nvml.DeviceGetPowerUsage(target.deviceHandle)
-	if ret != nvml.SUCCESS {
-		return 0, fmt.Errorf("nvmlDeviceGetPowerUsage failed")
-	}
-	return value, nil
+	return target.ReadDeviceLoad()
+}
+func LimitAstralDevice (device AstralDevice, factor float64) (error) {
+	return device.LimitDevice(factor)
 }
 
-// Emergency actions
+// Sets the clocks to their minimal values to prevent a catastrophic meltdown.
 //
 
-func LimitAstralDeviceClock (target AstralDevice) (error) {
+func limitAstralDeviceClock (target AstralDevice) (error) {
 	var ret nvml.Return
 
 	ret = nvml.DeviceSetGpuLockedClocks(target.deviceHandle, 0, target.deviceClockMinimumGraphics)
@@ -168,7 +197,7 @@ func LimitAstralDeviceClock (target AstralDevice) (error) {
 //
 // Note: limitValue is specified in mW
 
-func LimitAstralDeviceLoad (target AstralDevice, limitValue uint32) (error) {
+func limitAstralDeviceLoad (target AstralDevice, limitValue uint32) (error) {
 	if limitValue < target.devicePowerConstraintLower {
 		return fmt.Errorf("limitValue < devicePowerConstraintLower")
 	}
@@ -185,14 +214,6 @@ func LimitAstralDeviceLoad (target AstralDevice, limitValue uint32) (error) {
 	return nil
 }
 
-func LimitAstralDevice (device AstralDevice, rate float64) (error) {
-	target := uint32(float64(device.devicePowerConstraintUpper) * rate)
-	if target < device.devicePowerConstraintLower {
-		return LimitAstralDeviceClock(device)
-	} else {
-		return LimitAstralDeviceLoad(device, target)
-	}
-}
 
 // Supporting functions
 //
@@ -245,18 +266,6 @@ func findAstralDeviceSensorNumber (info nvml.PciInfo) (int, error) {
 
 	return final, nil
 }
-
-func clamp[V cmp.Ordered] (value V, lower V, upper V) V {
-	if value > upper {
-		return upper
-	}
-	if value < lower {
-		return lower
-	}
-	return value
-}
-
-// ...
 
 func makeAstralDevice (device nvml.Device, pcinfo nvml.PciInfo) (* AstralDevice, error) {
 	uuid, ret := nvml.DeviceGetUUID(device)
