@@ -1,47 +1,42 @@
 Introduction
 
-  • The 12V-2x6 (12VHPWR) connectors are notorious for their flammability.
+  • The 12V-2x6 connectors are notorious for their flammability.
   • The ASUS ROG ASTRAL implementation of RTX 5090 monitors voltage and current
-    flowing through connector pins.
+    flowing through individual power pairs.
 
   This project provides a native Linux implementation of the current monitoring
   functionality of ASUS ROG ASTRAL devices. The support is currently limited to
-  ROG-ASTRAL-RTX5090-O32G and ROG-ASTRAL-RTX5090-O32G-WHITE devices.
+
+    ROG-ASTRAL-RTX5090-O32G
+    ROG-ASTRAL-RTX5090-O32G-WHITE
+
+  as the authors and contributors do not have access to other devices.
 
   • The bin/susm binary implements a simple monitor.
   • The bin/susd binary implements a simple daemon that attempts to reduce the
-    power draw when it detects either overload on any of the connectors pins or
-    when there is a significant mismatch between individual wires.
+    power draw when it detects overload on any of the wires.
+
+    The daemon calculates the reduced power. If possible, it tries to use the
+    standard limiting facilities. Otherwise it declares a state of emergency
+    and locks the operating frequencies as low as possible to prevent
+    meltdowns. 
 
 Considerations
 
-  The specification requires the wires to be rated for at least 9.2 A current.
+  The ATX 3.1 specification requires that the 12V-2x6 wires to handle currents 
+  in the neighbourhood of 9.2 (A).
+  
   The RTX 5090 cards are rated for a maximal power draw of 600 W. With balanced
-  distribution of load across the wires this amounts to 8.5 A current per wire.
+  distribution of load across the wires this amounts to 8.5 (A) per wire.
 
-  Faulty connections, wires, and connectors can move the load distribution out
-  of balance, overloading some of the wires. To counter these in live systems
-  it is possible to limit the power draw of the card. 
+  Faulty connections and wires can move the load distribution out of balance,
+  overloading some of the wires. To counter these in live systems it is
+  possible to limit the power draw of the card. 
 
-  • The power management facilities of the RTX 5090 permit dynamic setting
-    between 400 and 600 W. Within this range the card adjusts its clocks to 
-    meet the power limits.
+  • The power management facilities of tested RTX 5090 cards permit dynamic
+    setting between 400 and 600 (W). Within this range the card adjusts its
+    clocks to meet the power limits.
   • Outside of this range the power can be further limited by adjusting the
     clocks manually, making it possible to further reduce the power draw down
-    to approximately 60 W.
-
-  When reducing the power there are two strategies possible.
-
-  • If the target power limit lies within the (400, 600) range, use the power
-    management facilities directly.
-  • If it lies below, adjust the clocks manually.
-
-  Control algorithm
-
-  • Compute rate := max(current) / threshold
-  • Compute goal := powerLimitUpper * rate
-  • If (powerLimitLower < goal) {
-    ... use nvml to limit the power,
-    else
-    ... take current clock frequency and reduce it by a step.
+    to approximately 60 (W).
 
