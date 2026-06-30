@@ -6,7 +6,7 @@ Introduction
 
   This project provides a native Linux implementation of the current monitoring
   functionality of ASUS ROG ASTRAL devices. The support is currently limited to
-  ROG-ASTRAL-RTX5090-O32G devices.
+  ROG-ASTRAL-RTX5090-O32G and ROG-ASTRAL-RTX5090-O32G-WHITE devices.
 
   • The bin/susm binary implements a simple monitor.
   • The bin/susd binary implements a simple daemon that attempts to reduce the
