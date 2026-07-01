@@ -1,4 +1,4 @@
-// 2026 Jan Provaznik (jan@provaznik.pro)
+// 2026 Jan Provaznik (jan@provaznik.pro).0
 //
 
 package sus
@@ -21,8 +21,11 @@ var astralCompatibleDevice = []uint32 {
 	0x8a2e1043, // ROG-ASTRAL-RTX5090-O32G-WHITE
 }
 
-// Exported type: AstralDevicePin
+// Exported struct: AstralDevicePin
 //
+// .Voltage () (float64)
+// .Current () (float64)
+// .Drawing () (float64)
 
 type AstralDevicePin struct {
 	voltage float64
@@ -39,8 +42,12 @@ func (self AstralDevicePin) Drawing () float64 {
 	return self.voltage * self.current
 }
 
-// Exported type: AstralDevice
+// Exported struct: AstralDevice
 //
+// .Identifier      ()               (string)
+// .QueryDeviceLoad ()               (uint32, error)
+// .QueryDevicePins ()               (uint32, error)
+// .ScaleDeviceLoad (factor float64) (error)
 
 type AstralDevice struct {
 	sensorNumber int
@@ -48,48 +55,53 @@ type AstralDevice struct {
 	deviceDetailPci nvml.PciInfo 
 	deviceDetailIdentifier string
 
-	// ... constraints
+	// ... constraints (power management, clock frequencies)
 	devicePowerConstraintLower uint32
 	devicePowerConstraintUpper uint32
 	deviceClockMinimumGraphics uint32
 	deviceClockMinimumMemories uint32
 }
 
+// Returns a readable identification of the device
 func (self AstralDevice) Identifier () string {
 	return self.deviceDetailIdentifier
 }
 
-func (self AstralDevice) ReadDeviceLoad () (uint32, error) {
-	// nvmlDeviceGetPowerUsage (mW)
+// Queries the current power draw of the device, returns value in mW
+func (self AstralDevice) QueryDeviceLoad () (uint32, error) {
 	value, ret := nvml.DeviceGetPowerUsage(self.deviceHandle)
 	if ret != nvml.SUCCESS {
-		return 0, fmt.Errorf("nvmlDeviceGetPowerUsage failed")
+		return 0, fmt.Errorf("nvmlDeviceGetPowerUsage failed (%w)", ret)
 	}
 	return value, nil
 }
 
-func (self AstralDevice) LimitDevice (factor float64) (error) {
-	if factor > 1 {
-		return fmt.Errorf("Invalid factor: must be factor < 1")
+// Scales the current power draw of the device by 0 < scale < 1
+func (self AstralDevice) ScaleDeviceLoad (scale float64) (error) {
+	if scale < 0 {
+		return fmt.Errorf("Invalid scale: must be 0 < scale")
 	}
-	if factor < 0 {
-		return fmt.Errorf("Invalid factor: must be 0 < factor")
+	if scale > 1 {
+		return fmt.Errorf("Invalid scale: must be scale < 1")
 	}
 
-	load, err := self.ReadDeviceLoad()
+	current, err := self.QueryDeviceLoad()
 	if err != nil {
 		return err
 	}
 
-	target := uint32(float64(load) * factor)
+	target := uint32(float64(current) * scale)
+
+	// ... target below the configurable limit, declare emergency and throttle
 	if target < self.devicePowerConstraintLower {
-		return limitAstralDeviceClock(self)
+		return throttleDeviceClock(self)
 	}
 
 	return limitAstralDeviceLoad(self, target)
 }
 
-func (self AstralDevice) ReadDevicePins () ([]AstralDevicePin, error) {
+// Queries the current power draw of its pins, returns an array of readings
+func (self AstralDevice) QueryDevicePins () ([]AstralDevicePin, error) {
 	// Sensor address and register
 	// ... via https://long-cat.net/gitea/moosecrap/evga-icx
 	// ... via https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
@@ -113,7 +125,7 @@ func (self AstralDevice) ReadDevicePins () ([]AstralDevicePin, error) {
 	}
 
 	if length != 24 {
-		return nil, fmt.Errorf("could not read sensor device")
+		return nil, fmt.Errorf("Could not read sensor device, content too short")
 	}
 
 	result := make([]AstralDevicePin, 6)
@@ -126,90 +138,57 @@ func (self AstralDevice) ReadDevicePins () ([]AstralDevicePin, error) {
 	return result, nil
 }
 
-// Exported functions
+// Exported functions (with backwards compatibility)
 //
 
 func FindAstralDevices () ([] AstralDevice, error) {
-	var found [] AstralDevice
-
-	count, ret := nvml.DeviceGetCount()
-	if ret != nvml.SUCCESS {
-		return nil, fmt.Errorf("nvmlDeviceGetCount failed (%w)", ret)
-	}
-
-	for index := range count {
-		device, ret := nvml.DeviceGetHandleByIndex(index)
-		if ret != nvml.SUCCESS {
-			return nil, fmt.Errorf("nvmlDeviceGetHandleByIndex failed (%w)", ret)
-		}
-
-		info, ret := nvml.DeviceGetPciInfo(device)
-		if ret != nvml.SUCCESS {
-			return nil, fmt.Errorf("nvmlDeviceGetPciInfo failed (%w)", ret)
-		}
-
-		if ! slices.Contains(nvidiaCompatibleDevice, info.PciDeviceId) {
-			continue
-		}
-		if ! slices.Contains(astralCompatibleDevice, info.PciSubSystemId) {
-			continue
-		}
-
-		current, err := makeAstralDevice(device, info)
-		if err != nil {
-			return nil, err
-		}
-
-		found = append(found, * current)
-	}
-
-	return found, nil
+	return findAstralDevices()
 }
-
 func ReadAstralDevicePins (target AstralDevice) ([]AstralDevicePin, error) {
-	return target.ReadDevicePins()
+	return target.QueryDevicePins()
 }
-func ReadAstralDeviceLoad (target AstralDevice) (uint32, error) {
-	return target.ReadDeviceLoad()
+func ReadAstralDeviceLoad (target AstralDevice) (float64, error) {
+	value, err := target.QueryDeviceLoad()
+	if err != nil {
+		return 0, err
+	}
+	return float64(value) / 1000.0, nil
 }
-func LimitAstralDevice (device AstralDevice, factor float64) (error) {
-	return device.LimitDevice(factor)
+func LimitAstralDevice (device AstralDevice, scale float64) (error) {
+	return device.ScaleDeviceLoad(scale)
 }
 
-// Sets the clocks to their minimal values to prevent a catastrophic meltdown.
+// Implementation details 
 //
 
-func limitAstralDeviceClock (target AstralDevice) (error) {
+
+// Sets the clocks to their minimal values to prevent a catastrophic meltdown.
+func throttleDeviceClock (self AstralDevice) (error) {
 	var ret nvml.Return
 
-	ret = nvml.DeviceSetGpuLockedClocks(target.deviceHandle, 0, target.deviceClockMinimumGraphics)
+	ret = nvml.DeviceSetGpuLockedClocks(self.deviceHandle, 0, self.deviceClockMinimumGraphics)
 	if ret != nvml.SUCCESS {
-		return fmt.Errorf("nvmlDeviceSetGpuLockedClocks failed")
+		return fmt.Errorf("nvmlDeviceSetGpuLockedClocks failed (%w)", ret)
 	}
 
-	ret = nvml.DeviceSetMemoryLockedClocks(target.deviceHandle, 0, target.deviceClockMinimumMemories)
+	ret = nvml.DeviceSetMemoryLockedClocks(self.deviceHandle, 0, self.deviceClockMinimumMemories)
 	if ret != nvml.SUCCESS {
-		return fmt.Errorf("nvmlDeviceSetMemoryLockedClocks failed")
+		return fmt.Errorf("nvmlDeviceSetMemoryLockedClocks failed (%w)", ret)
 	}
 
 	return nil
 }
 
-// Uses the native nvmlDeviceSetPowerManagementLimit facilities
-// to control the maximal power draw of target device.
-//
-// Note: limitValue is specified in mW
-
-func limitAstralDeviceLoad (target AstralDevice, limitValue uint32) (error) {
-	if limitValue < target.devicePowerConstraintLower {
-		return fmt.Errorf("limitValue < devicePowerConstraintLower")
+// Sets the power limit using nvmlDeviceSetPowerManagementLimit procedure
+func limitAstralDeviceLoad (self AstralDevice, target uint32) (error) {
+	if target < self.devicePowerConstraintLower {
+		return fmt.Errorf("target < devicePowerConstraintLower")
 	}
-	if limitValue > target.devicePowerConstraintUpper {
-		return fmt.Errorf("limitValue > devicePowerConstraintUpper")
+	if target > self.devicePowerConstraintUpper {
+		return fmt.Errorf("target > devicePowerConstraintUpper")
 	}
 
-	// ... nvmlDeviceSetPowerManagementLimit (mW)
-	ret := nvml.DeviceSetPowerManagementLimit(target.deviceHandle, limitValue)
+	ret := nvml.DeviceSetPowerManagementLimit(self.deviceHandle, target)
 	if ret != nvml.SUCCESS {
 		return fmt.Errorf("nvmlDeviceSetPowerManagementLimit failed")
 	}
@@ -264,46 +243,73 @@ func findAstralDeviceSensorNumber (info nvml.PciInfo) (int, error) {
 	}
 
 	if final == 0xffff {
-		return final, fmt.Errorf("could not find sensor device")
+		return final, fmt.Errorf("Could not find sensor device")
 	}
 
 	return final, nil
 }
 
-func makeAstralDevice (device nvml.Device, pcinfo nvml.PciInfo) (* AstralDevice, error) {
-	uuid, ret := nvml.DeviceGetUUID(device)
+func findAstralDevices () ([] AstralDevice, error) {
+	var found [] AstralDevice
+
+	count, ret := nvml.DeviceGetCount()
 	if ret != nvml.SUCCESS {
-		return nil, fmt.Errorf("nvmlDeviceGetUUID failed")
+		return nil, fmt.Errorf("nvmlDeviceGetCount failed (%w)", ret)
 	}
 
-	number, err := findAstralDeviceSensorNumber(pcinfo)
-	if err != nil {
-		return nil, err
+	for index := range count {
+		device, ret := nvml.DeviceGetHandleByIndex(index)
+		if ret != nvml.SUCCESS {
+			return nil, fmt.Errorf("nvmlDeviceGetHandleByIndex failed (%w)", ret)
+		}
+
+		info, ret := nvml.DeviceGetPciInfo(device)
+		if ret != nvml.SUCCESS {
+			return nil, fmt.Errorf("nvmlDeviceGetPciInfo failed (%w)", ret)
+		}
+
+		if ! slices.Contains(nvidiaCompatibleDevice, info.PciDeviceId) {
+			continue
+		}
+		if ! slices.Contains(astralCompatibleDevice, info.PciSubSystemId) {
+			continue
+		}
+
+		uuid, ret := nvml.DeviceGetUUID(device)
+		if ret != nvml.SUCCESS {
+			return nil, fmt.Errorf("nvmlDeviceGetUUID failed (%w)", ret)
+		}
+
+		number, err := findAstralDeviceSensorNumber(info)
+		if err != nil {
+			return nil, err
+		}
+
+		limitLower, limitUpper, ret := nvml.DeviceGetPowerManagementLimitConstraints(device)
+		if ret != nvml.SUCCESS {
+			return nil, fmt.Errorf("nvmlDeviceGetPowerManagementLimitConstraints failed (%w)", ret)
+		}
+
+		limitClockGraphics, limitClockMemories, err := readClockConstraints(device)
+		if err != nil {
+			return nil, err
+		}
+
+		current := AstralDevice {
+			sensorNumber: number,
+			deviceHandle: device,
+			deviceDetailPci: info,
+			deviceDetailIdentifier: uuid,
+			devicePowerConstraintLower: limitLower,
+			devicePowerConstraintUpper: limitUpper,
+			deviceClockMinimumGraphics: limitClockGraphics,
+			deviceClockMinimumMemories: limitClockMemories,
+		}
+
+		found = append(found, current)
 	}
 
-	// nvmlDeviceGetPowerManagementLimitConstraints (mW)
-	limitLower, limitUpper, ret := nvml.DeviceGetPowerManagementLimitConstraints(device)
-	if ret != nvml.SUCCESS {
-		return nil, fmt.Errorf("nvmlDeviceGetPowerManagementLimitConstraints failed")
-	}
-
-	// nvmlDeviceGetSupportedPerformanceStates
-	// nvmlDeviceGetMinMaxClockOfPState
-	limitClockGraphics, limitClockMemories, err := readClockConstraints(device)
-	if err != nil {
-		return nil, err
-	}
-	
-	return & AstralDevice {
-		sensorNumber: number,
-		deviceHandle: device,
-		deviceDetailPci: pcinfo,
-		deviceDetailIdentifier: uuid,
-		devicePowerConstraintLower: limitLower,
-		devicePowerConstraintUpper: limitUpper,
-		deviceClockMinimumGraphics: limitClockGraphics,
-		deviceClockMinimumMemories: limitClockMemories,
-	}, nil
+	return found, nil
 }
 
 func readClockConstraints (device nvml.Device) (uint32, uint32, error) {
@@ -315,8 +321,8 @@ func readClockConstraints (device nvml.Device) (uint32, uint32, error) {
 	// ... nvmlDeviceGetSupportedGraphicsClocks
 	// because go-nvml (v0.13.3) implements the C interface incorrectly.
 
-	var leastFrequencyGraphics uint32 = 0xffff
-	var leastFrequencyMemories uint32 = 0xffff
+	var leastFrequencyGraphics uint32 = 0xffffff
+	var leastFrequencyMemories uint32 = 0xffffff
 
 	// nvmlDeviceGetSupportedPerformanceStates
 	var supported []nvml.Pstates 
@@ -343,7 +349,7 @@ func readClockConstraints (device nvml.Device) (uint32, uint32, error) {
 	return leastFrequencyGraphics, leastFrequencyMemories, nil
 }
 
-func readClockConstraintsOfPerformanceState (device nvml.Device, pstate nvml.Pstates) (uint32, uint32 , error) {
+func readClockConstraintsOfPerformanceState (device nvml.Device, pstate nvml.Pstates) (uint32, uint32, error) {
 	var valueGraphics, valueMemories uint32
 
 	valueGraphics, _, ret := nvml.DeviceGetMinMaxClockOfPState(device, nvml.CLOCK_GRAPHICS, pstate)
@@ -358,4 +364,5 @@ func readClockConstraintsOfPerformanceState (device nvml.Device, pstate nvml.Pst
 
 	return valueGraphics, valueMemories, nil
 }
+
 

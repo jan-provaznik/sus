@@ -84,7 +84,7 @@ func deviceReport (index int, device sus.AstralDevice) error {
 	// ... report
 	fmt.Printf("Device (%d) known as (%s)\n", 
 		index, device.Identifier())
-	fmt.Printf("... total load %5.1f W\n", float64(load) / 1000.0)
+	fmt.Printf("... total load %5.1f W\n", load)
 	fmt.Printf("... total draw %5.1f W (min %5.1f max %5.1f W) rate %.2f\n", 
 		totalDraw, lowerDraw, upperDraw, matchDraw)
 
@@ -92,20 +92,6 @@ func deviceReport (index int, device sus.AstralDevice) error {
 	for _, pin := range pins {
 		value := pin.Drawing()
 		fmt.Printf("%5.1f W ", value)
-	}
-	fmt.Println()
-
-	fmt.Printf("... pins  draw ")
-	for _, pin := range pins {
-		value := pin.Current()
-		fmt.Printf("%5.1f A ", value)
-	}
-	fmt.Println()
-	
-	fmt.Printf("... pins  draw ")
-	for _, pin := range pins {
-		value := pin.Voltage()
-		fmt.Printf("%5.1f V ", value)
 	}
 	fmt.Println()
 
