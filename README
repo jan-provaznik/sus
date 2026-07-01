@@ -34,6 +34,16 @@ Introduction
       nvidia-smi --reset-memory-clocks
       nvidia-smi --reset-gpu-clocks
 
+System integration
+
+  The install/susd.service systemd unit file provides system integration for
+  the bin/susd daemon. It expects the binary at /usr/local/bin/susd location.
+
+Testing the functionality
+
+  The gpu-burn utility (https://github.com/wilicc/gpu-burn) was used to
+  simulate extreme computational loads.
+
 Considerations
 
   The ATX 3.1 specification requires that the 12V-2x6 wires to handle currents 
@@ -52,11 +62,6 @@ Considerations
   • Outside of this range the power can be further limited by adjusting the
     clocks manually, making it possible to further reduce the power draw down
     to approximately 60 (W).
-
-Testing the functionality
-
-  The gpu-burn utility (https://github.com/wilicc/gpu-burn) was used to
-  simulate extreme computational loads.
 
 References
 

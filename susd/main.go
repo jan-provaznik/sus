@@ -10,14 +10,14 @@ import "time"
 import "github.com/jan-provaznik/sus"
 import "github.com/NVIDIA/go-nvml/pkg/nvml"
 
-var flagMonitorDelay time.Duration = 2 * time.Second
-var flagCurrentLimit float64       = 8.5
+var flagMonitorDelay time.Duration
+var flagCurrentLimit float64 
 
 func main () {
 	os.Exit(work())
 }
 
-func work () int {
+func work () (int) {
 	flag.DurationVar(& flagMonitorDelay, "t", 2 * time.Second, 
 		"Monitoring interval")
 	flag.Float64Var(& flagCurrentLimit, "u", 8.5, 
@@ -41,19 +41,19 @@ func work () int {
 	}
 
 	if ret := nvml.Init(); ret != nvml.SUCCESS {
-		fmt.Println("nvmlInit failed")
-		return 2
+		fmt.Println("nvmlInit failed (%w)", ret)
+		return 1
 	}
 	defer nvml.Shutdown()
 
 	list, err := sus.FindAstralDevices()
 	if err != nil {
 		fmt.Println(err)
-		return 2
+		return 1
 	}
 
 	if len(list) < 1 {
-		fmt.Println("Could not find any compatible devices. Exiting gracefully.")
+		fmt.Println("Could not find any compatible devices")
 		return 0
 	}
 
@@ -66,16 +66,16 @@ func work () int {
 		for index, device := range list {
 			if err := deviceMonitor(index, device); err != nil {
 				fmt.Println(err)
-				return 3
+				return 1
 			}
 		}
+
 		time.Sleep(flagMonitorDelay)
 	}
 }
 
-func deviceMonitor (index int, device sus.AstralDevice) error {
-	// ... load, as reported via asus interface
-	pins, err := sus.ReadAstralDevicePins(device)
+func deviceMonitor (index int, device sus.AstralDevice) (error) {
+	pins, err := device.QueryDevicePins()
 	if err != nil {
 		return err
 	}
@@ -96,12 +96,11 @@ func deviceMonitor (index int, device sus.AstralDevice) error {
 	fmt.Printf("... detected overload %.1f A (limit %.1f A)\n",
 		maximum, flagCurrentLimit)
 
-
-	rate := flagCurrentLimit / maximum
-	if rate > 1 {
+	scale := flagCurrentLimit / maximum
+	if scale > 1 {
 		return nil
 	}
 
-	return sus.LimitAstralDevice(device, rate)
+	return device.ScaleDeviceLoad(scale)
 }
 
