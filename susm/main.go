@@ -10,56 +10,58 @@ import "time"
 import "github.com/jan-provaznik/sus"
 import "github.com/NVIDIA/go-nvml/pkg/nvml"
 
-func main () {
-	defer nvml.Shutdown()
+var flagMonitorDelay time.Duration
 
-	interval := flag.Duration("t", time.Second, "Monitoring interval")
+func main () {
+	os.Exit(work())
+}
+
+func work () (int) {
+	flag.DurationVar(& flagMonitorDelay, "t", 2 * time.Second, 
+		"Monitoring interval")
 	flag.Parse()
 
-	ret := nvml.Init()
-	if ret != nvml.SUCCESS {
-		fmt.Println("nvmlInit failed")
-		os.Exit(1)
+	if ret := nvml.Init(); ret != nvml.SUCCESS {
+		fmt.Println("nvmlInit failed (%w)", ret)
+		return 1
 	}
+	defer nvml.Shutdown()
 
 	list, err := sus.FindAstralDevices()
 	if err != nil {
 		fmt.Println(err)
-		os.Exit(1)
+		return 1
 	}
 
 	if len(list) < 1 {
-		fmt.Println("Could not find any compatible devices. Exiting.")
-		os.Exit(0)
+		fmt.Println("Could not find any compatible devices.")
+		return 0
 	}
 
 	for {
 		for index, device := range list {
-			err := deviceReport(index, device)
-			if err != nil {
+			if err := deviceReport(index, device); err != nil {
 				fmt.Println(err)
-				os.Exit(1)
+				return 1
 			}
 		}
 		fmt.Println()
-		time.Sleep(* interval)
+
+		time.Sleep(flagMonitorDelay)
 	}
 }
 
-func deviceReport (index int, device sus.AstralDevice) error {
-	// ... load, as reported via nvml
-	load, err := sus.ReadAstralDeviceLoad(device)
+func deviceReport (index int, device sus.AstralDevice) (error) {
+	load, err := device.QueryDeviceLoad()
 	if err != nil {
 		return err
 	}
 
-	// ... load, as reported via asus interface
-	pins, err := sus.ReadAstralDevicePins(device)
+	pins, err := device.QueryDevicePins()
 	if err != nil {
 		return err
 	}
 
-	// ... calculate statistics
 	totalDraw := 0.0
 	upperDraw := 0.0
 	lowerDraw := 1e6
@@ -75,15 +77,14 @@ func deviceReport (index int, device sus.AstralDevice) error {
 		totalDraw = totalDraw + value
 	}
 
-	// ... calculate draw match
-	matchDraw := lowerDraw / upperDraw
+	mismatch := lowerDraw / upperDraw
 
 	// ... report
 	fmt.Printf("Device (%d) known as (%s)\n", 
 		index, device.Identifier())
-	fmt.Printf("... total load %5.1f W\n", load)
-	fmt.Printf("... total draw %5.1f W (min %5.1f max %5.1f W) rate %.2f\n", 
-		totalDraw, lowerDraw, upperDraw, matchDraw)
+	fmt.Printf("... total load %5.1f W\n", float64(load) / 1000.0)
+	fmt.Printf("... total draw %5.1f W (min %5.1f max %5.1f W) mismatch %.2f\n", 
+		totalDraw, lowerDraw, upperDraw, mismatch)
 
 	fmt.Printf("... pins  draw ")
 	for _, pin := range pins {

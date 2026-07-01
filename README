@@ -1,16 +1,73 @@
 Introduction
 
-  • The 12V-2x6 (12VHPWR) connectors are notorious for their flammability.
+  • The 12V-2x6 connectors are notorious for their flammability.
   • The ASUS ROG ASTRAL implementation of RTX 5090 monitors voltage and current
-    flowing through connector pins.
+    flowing through individual power pairs.
 
   This project provides a native Linux implementation of the current monitoring
   functionality of ASUS ROG ASTRAL devices. The support is currently limited to
-  ROG-ASTRAL-RTX5090-O32G and ROG-ASTRAL-RTX5090-O32G-WHITE devices.
+
+    ROG-ASTRAL-RTX5090-O32G
+    ROG-ASTRAL-RTX5090-O32G-WHITE
+
+  as the authors and contributors do not have access to other devices.
 
   • The bin/susm binary implements a simple monitor.
   • The bin/susd binary implements a simple daemon that attempts to reduce the
-    power draw when it detects either overload on any of the connectors pins or
-    when there is a significant mismatch between individual wires.
+    power draw when it detects overload on any of the wires.
 
+    The daemon calculates the reduced power. If possible, it tries to use the
+    standard limiting facilities. Otherwise it declares a state of emergency
+    and locks the operating frequencies as low as possible to prevent
+    meltdowns. 
+
+    The daemon can only reduce the power draw. It does not restore the
+    frequencies nor the power limits. It should not do that either. 
+
+    Overload signals hardware failure, hopefully related to the connection,
+    either the cable itself or the connectors, which is not going to
+    miraculously disappear without manual intervention.
+
+    The imposed restrictions can be reset with the nvidia-smi utility.
+
+      nvidia-smi --power-limit 600
+      nvidia-smi --reset-memory-clocks
+      nvidia-smi --reset-gpu-clocks
+
+System integration
+
+  The install/susd.service systemd unit file provides system integration for
+  the bin/susd daemon. It expects the binary at /usr/local/bin/susd location.
+
+Testing the functionality
+
+  The gpu-burn utility (https://github.com/wilicc/gpu-burn) was used to
+  simulate extreme computational loads.
+
+Considerations
+
+  The ATX 3.1 specification requires that the 12V-2x6 wires to handle currents 
+  in the neighbourhood of 9.2 (A).
+  
+  The RTX 5090 cards are rated for a maximal power draw of 600 W. With balanced
+  distribution of load across the wires this amounts to 8.5 (A) per wire.
+
+  Faulty connections and wires can move the load distribution out of balance,
+  overloading some of the wires. To counter these in live systems it is
+  possible to limit the power draw of the card. 
+
+  • The power management facilities of tested RTX 5090 cards permit dynamic
+    setting between 400 and 600 (W). Within this range the card adjusts its
+    clocks to meet the power limits.
+  • Outside of this range the power can be further limited by adjusting the
+    clocks manually, making it possible to further reduce the power draw down
+    to approximately 60 (W).
+
+References
+
+  • Sensor interaction (smbus)
+	  via https://github.com/Timic3/astral-power-monitoring
+  • Sensor address and register
+	  via https://long-cat.net/gitea/moosecrap/evga-icx
+	  via https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
 

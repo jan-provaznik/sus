@@ -5,6 +5,43 @@ Type = simple
 Restart = on-failure
 RestartSec = 1s
 
+ProtectClock = yes
+ProtectHome = yes
+ProtectHostname = yes
+ProtectProc = invisible
+ProtectSystem = strict
+ProtectControlGroups = strict
+ProtectKernelLogs = yes
+ProtectKernelModules = yes
+ProtectKernelTunables = yes
+
+RestrictRealtime = yes
+RestrictNamespaces = yes
+RestrictAddressFamilies = none
+RestrictSUIDSGID = yes
+
+PrivateDevices = no
+PrivateNetwork = yes
+PrivateUsers = no
+PrivateTmp = yes
+
+DeviceAllow = char-i2c    rw
+DeviceAllow = char-nvidia rw
+DevicePolicy = closed
+
+SystemCallFilter = @system-service
+SystemCallFilter = ~ @privileged @resources
+SystemCallArchitectures = native
+
+ProcSubset = pid
+
+IPAddressDeny = any
+LockPersonality = yes
+MemoryDenyWriteExecute = yes
+
+NoNewPrivileges = yes
+CapabilityBoundingSet = CAP_SYS_ADMIN
+
 [Install]
 WantedBy = multi-user.target
 
