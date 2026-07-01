@@ -1,5 +1,5 @@
 [Service]
-ExecStart = /usr/local/bin/susd -u 9.0 -t 1s
+ExecStart = /usr/local/bin/susd -u 1.0
 Type = simple
 
 Restart = on-failure
@@ -22,7 +22,7 @@ RestrictSUIDSGID = yes
 
 PrivateDevices = no
 PrivateNetwork = yes
-PrivateUsers = yes
+PrivateUsers = no
 PrivateTmp = yes
 
 DeviceAllow = char-i2c    rw
@@ -40,7 +40,7 @@ LockPersonality = yes
 MemoryDenyWriteExecute = yes
 
 NoNewPrivileges = yes
-CapabilityBoundingSet = 
+CapabilityBoundingSet = CAP_SYS_ADMIN
 
 [Install]
 WantedBy = multi-user.target

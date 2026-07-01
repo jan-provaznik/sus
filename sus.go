@@ -365,4 +365,3 @@ func readClockConstraintsOfPerformanceState (device nvml.Device, pstate nvml.Pst
 	return valueGraphics, valueMemories, nil
 }
 
-
