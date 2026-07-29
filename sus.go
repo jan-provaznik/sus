@@ -19,6 +19,7 @@ var nvidiaCompatibleDevice = []uint32 { 0x2b8510de }
 var astralCompatibleDevice = []uint32 {
 	0x89e31043, // ROG-ASTRAL-RTX5090-O32G
 	0x8a2e1043, // ROG-ASTRAL-RTX5090-O32G-WHITE
+	0x8a5a1043, // ROG- STRIX-RTX5090-032G-BTF
 }
 
 // Exported struct: AstralDevicePin
