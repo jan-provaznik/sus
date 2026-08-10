@@ -46,6 +46,11 @@ func work () (int) {
 	}
 	defer nvml.Shutdown()
 
+	if _, err := os.Stat("/sys/module/i2c_dev"); err != nil {
+		fmt.Println("Could not find i2c-dev module. Please ensure it is loaded.")
+		return 1
+	}
+
 	list, err := sus.FindAstralDevices()
 	if err != nil {
 		fmt.Println(err)
