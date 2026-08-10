@@ -16,23 +16,27 @@ Introduction
   • The bin/susd binary implements a simple daemon that attempts to reduce the
     power draw when it detects overload on any of the wires.
 
-    The daemon calculates the reduced power. If possible, it tries to use the
-    standard limiting facilities. Otherwise it declares a state of emergency
-    and locks the operating frequencies as low as possible to prevent
-    meltdowns. 
+  Both utilities require the i2c-dev kernel module to be loaded:
 
-    The daemon can only reduce the power draw. It does not restore the
-    frequencies nor the power limits. It should not do that either. 
+    modprobe i2c-dev
 
-    Overload signals hardware failure, hopefully related to the connection,
-    either the cable itself or the connectors, which is not going to
-    miraculously disappear without manual intervention.
+  The daemon calculates the reduced power. If possible, it tries to use the
+  standard limiting facilities. Otherwise it declares a state of emergency
+  and locks the operating frequencies as low as possible to prevent
+  meltdowns.
 
-    The imposed restrictions can be reset with the nvidia-smi utility.
+  The daemon can only reduce the power draw. It does not restore the
+  frequencies nor the power limits. It should not do that either.
 
-      nvidia-smi --power-limit 600
-      nvidia-smi --reset-memory-clocks
-      nvidia-smi --reset-gpu-clocks
+  Overload signals hardware failure, hopefully related to the connection,
+  either the cable itself or the connectors, which is not going to
+  miraculously disappear without manual intervention.
+
+  The imposed restrictions can be reset with the nvidia-smi utility.
+
+    nvidia-smi --power-limit 600
+    nvidia-smi --reset-memory-clocks
+    nvidia-smi --reset-gpu-clocks
 
 System integration
 
@@ -46,15 +50,15 @@ Testing the functionality
 
 Considerations
 
-  The ATX 3.1 specification requires that the 12V-2x6 wires to handle currents 
+  The ATX 3.1 specification requires that the 12V-2x6 wires to handle currents
   in the neighbourhood of 9.2 (A).
-  
+
   The RTX 5090 cards are rated for a maximal power draw of 600 W. With balanced
   distribution of load across the wires this amounts to 8.5 (A) per wire.
 
   Faulty connections and wires can move the load distribution out of balance,
   overloading some of the wires. To counter these in live systems it is
-  possible to limit the power draw of the card. 
+  possible to limit the power draw of the card.
 
   • The power management facilities of tested RTX 5090 cards permit dynamic
     setting between 400 and 600 (W). Within this range the card adjusts its

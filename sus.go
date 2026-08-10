@@ -111,22 +111,21 @@ func (self AstralDevice) QueryDevicePins () ([]AstralDevicePin, error) {
 
 	bus, err := smbus.Open(self.sensorNumber)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Could not open sensor (%d) device (%w)", self.sensorNumber, err)
 	}
 	defer bus.Close()
 
 	if err := bus.SetSlaveAddr(0x2B, false); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Could not pick sensor (%d, 0x2B) device (%w)", self.sensorNumber, err)
 	}
 
 	buffer := make([]byte, 24)
 	length, err := bus.ReadI2CBlockData(0x80, buffer)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Could not read sensor (%d, 0x2B, 0x80) device (%w)", self.sensorNumber, err)
 	}
-
 	if length != 24 {
-		return nil, fmt.Errorf("Could not read sensor device, content too short")
+		return nil, fmt.Errorf("Could not read sensor (%d, 0x2B, 0x80) device, content too short", self.sensorNumber)
 	}
 
 	result := make([]AstralDevicePin, 6)
