@@ -9,6 +9,7 @@ Introduction
 
     ROG-ASTRAL-RTX5090-O32G
     ROG-ASTRAL-RTX5090-O32G-WHITE
+    ROG- STRIX-RTX5090-032G-BTF
 
   as the authors and contributors do not have access to other devices.
 
@@ -16,7 +17,7 @@ Introduction
   • The bin/susd binary implements a simple daemon that attempts to reduce the
     power draw when it detects overload on any of the wires.
 
-  Both utilities require the i2c-dev kernel module to be loaded:
+  Both utilities require the i2c-dev kernel module to be loaded.
 
     modprobe i2c-dev
 
